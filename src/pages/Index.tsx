@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,8 @@ import { MapComponent } from "@/components/MapComponent";
 import { AddLocationModal } from "@/components/AddLocationModal";
 import { UserProfile } from "@/components/UserProfile";
 import { PoliceMarkerCard } from "@/components/PoliceMarkerCard";
+import { useTelegramAuth } from "@/hooks/useTelegramAuth";
+import { useTelegram } from "@/hooks/useTelegram";
 
 interface PoliceLocation {
   id: string;
@@ -24,6 +26,9 @@ const Index = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<PoliceLocation | null>(null);
+  
+  const { isAuthenticated, isLoading, telegramUser } = useTelegramAuth();
+  const { showMainButton, hideMainButton } = useTelegram();
 
   // Mock data - will be replaced with Supabase data
   const [policeLocations] = useState<PoliceLocation[]>([
@@ -67,6 +72,26 @@ const Index = () => {
     // Will integrate with Supabase
   };
 
+  // Telegram Mini App адаптация
+  useEffect(() => {
+    if (selectedMarker) {
+      showMainButton('Закрыть', () => setSelectedMarker(null));
+    } else {
+      hideMainButton();
+    }
+  }, [selectedMarker, showMainButton, hideMainButton]);
+
+  if (isLoading) {
+    return (
+      <div className="h-screen bg-gradient-subtle flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen bg-gradient-subtle flex flex-col">
       {/* Header */}
@@ -78,7 +103,9 @@ const Index = () => {
             </div>
             <div>
               <h1 className="text-lg font-bold text-foreground">ДПС Радар</h1>
-              <p className="text-xs text-muted-foreground">Совместная карта постов</p>
+              <p className="text-xs text-muted-foreground">
+                {telegramUser ? `Привет, ${telegramUser.first_name}!` : 'Совместная карта постов'}
+              </p>
             </div>
           </div>
           <Button

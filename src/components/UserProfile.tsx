@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { User, MapPin, CheckCircle, XCircle, Trophy, Calendar, Star } from "lucide-react";
+import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 
 interface UserProfileProps {
   isOpen: boolean;
@@ -10,10 +11,10 @@ interface UserProfileProps {
 }
 
 export const UserProfile = ({ isOpen, onClose }: UserProfileProps) => {
-  // Mock user data - will be replaced with Supabase data
+  const { telegramUser } = useTelegramAuth();
+  
+  // Mock stats data - will be replaced with Supabase data  
   const userData = {
-    username: "Водитель123",
-    joinedDate: "Март 2024",
     reportsCount: 15,
     confirmationsGiven: 42,
     denialsGiven: 8,
@@ -21,6 +22,12 @@ export const UserProfile = ({ isOpen, onClose }: UserProfileProps) => {
     rank: "Проверенный водитель",
     totalPoints: 350
   };
+
+  const displayName = telegramUser 
+    ? `${telegramUser.first_name}${telegramUser.last_name ? ` ${telegramUser.last_name}` : ''}`
+    : "Пользователь";
+    
+  const username = telegramUser?.username || displayName;
 
   const getUserBadgeColor = (accuracy: number) => {
     if (accuracy >= 90) return "bg-confirm text-confirm-foreground";
@@ -45,16 +52,25 @@ export const UserProfile = ({ isOpen, onClose }: UserProfileProps) => {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg">{userData.username}</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    На платформе с {userData.joinedDate}
-                  </p>
-                </div>
+              <div>
+                <CardTitle className="text-lg">{displayName}</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {telegramUser?.username && `@${telegramUser.username}`}
+                  {telegramUser?.is_premium && " ⭐ Premium"}
+                </p>
+              </div>
                 <div className="text-center">
-                  <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center mb-1">
-                    <User className="h-6 w-6 text-primary-foreground" />
-                  </div>
+                  {telegramUser?.photo_url ? (
+                    <img 
+                      src={telegramUser.photo_url} 
+                      alt="Profile" 
+                      className="w-12 h-12 rounded-full object-cover mb-1"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center mb-1">
+                      <User className="h-6 w-6 text-primary-foreground" />
+                    </div>
+                  )}
                   <Badge className={getUserBadgeColor(userData.accuracy)}>
                     {userData.accuracy}%
                   </Badge>
@@ -183,7 +199,9 @@ export const UserProfile = ({ isOpen, onClose }: UserProfileProps) => {
           <Card className="bg-muted/30">
             <CardContent className="p-3">
               <p className="text-xs text-muted-foreground text-center">
-                💡 Повышайте точность сообщений для получения новых достижений и рангов!
+                💡 Используй DPS Radar через Telegram для удобства!
+                <br />
+                Твой ID: {telegramUser?.id || "Unknown"}
               </p>
             </CardContent>
           </Card>

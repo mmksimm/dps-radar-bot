@@ -122,7 +122,21 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  /* Telegram Mini App specific styles */
+  .tg-viewport {
+    --tg-theme-bg-color: var(--background);
+    --tg-theme-text-color: var(--foreground);
+    --tg-theme-hint-color: var(--muted-foreground);
+    --tg-theme-link-color: var(--primary);
+    --tg-theme-button-color: var(--primary);
+    --tg-theme-button-text-color: var(--primary-foreground);
+  }
+
   body {
     @apply bg-background text-foreground;
+    /* Убираем дефолтные отступы для Telegram Mini App */
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
   }
 }
