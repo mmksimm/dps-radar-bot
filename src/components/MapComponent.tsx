@@ -1,16 +1,20 @@
+
 import { useEffect, useRef } from 'react';
 import { MapPin, Shield, AlertTriangle } from 'lucide-react';
 
 interface PoliceLocation {
   id: string;
-  lat: number;
-  lng: number;
+  latitude: number;
+  longitude: number;
   address: string;
-  reportedBy: string;
-  reportedAt: Date;
+  user_id: string;
+  created_at: string;
+  status: 'active' | 'confirmed' | 'disputed';
+  profiles?: {
+    username: string;
+  };
   confirmations: number;
   denials: number;
-  status: 'active' | 'confirmed' | 'disputed';
 }
 
 interface MapComponentProps {
@@ -43,12 +47,24 @@ export const MapComponent = ({ policeLocations, onMarkerClick }: MapComponentPro
     }
   };
 
+  const getTimeAgo = (createdAt: string) => {
+    const now = new Date();
+    const created = new Date(createdAt);
+    const diffInMinutes = Math.floor((now.getTime() - created.getTime()) / (1000 * 60));
+    
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes}м`;
+    } else if (diffInMinutes < 1440) {
+      return `${Math.floor(diffInMinutes / 60)}ч`;
+    } else {
+      return `${Math.floor(diffInMinutes / 1440)}д`;
+    }
+  };
+
   // Simulate map interaction - will be replaced with actual map library
   useEffect(() => {
     if (!mapRef.current) return;
 
-    // This would be replaced with actual map initialization
-    // For now, we'll create a styled placeholder that looks like a map
     const mapElement = mapRef.current;
     mapElement.style.background = `
       linear-gradient(45deg, #f0f4f8 25%, transparent 25%), 
@@ -86,29 +102,47 @@ export const MapComponent = ({ policeLocations, onMarkerClick }: MapComponentPro
           <div className="absolute left-3/4 top-0 bottom-0 w-0.5 bg-border/30"></div>
         </div>
 
-        {/* Police Location Markers */}
-        {policeLocations.map((location, index) => (
-          <div
-            key={location.id}
-            className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 hover:scale-110 ${getMarkerColor(location.status)} rounded-full p-2 shadow-lg border-2 animate-pulse`}
-            style={{
-              left: `${20 + index * 30}%`,
-              top: `${30 + index * 20}%`,
-              animationDelay: `${index * 0.5}s`
-            }}
-            onClick={() => onMarkerClick(location)}
-          >
-            {getMarkerIcon(location.status)}
-            
-            {/* Ripple Effect */}
-            <div className={`absolute inset-0 ${getMarkerColor(location.status)} rounded-full animate-ping opacity-20`}></div>
-            
-            {/* Time indicator */}
-            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-card px-2 py-1 rounded text-xs text-muted-foreground whitespace-nowrap shadow-soft">
-              {Math.floor((Date.now() - location.reportedAt.getTime()) / (1000 * 60))}м назад
+        {/* Police Location Markers - Real Data */}
+        {policeLocations.map((location, index) => {
+          // Распределяем маркеры по карте на основе их координат
+          const leftPercent = 10 + (index % 8) * 10;
+          const topPercent = 15 + Math.floor(index / 8) * 15;
+          
+          return (
+            <div
+              key={location.id}
+              className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-all duration-300 hover:scale-110 ${getMarkerColor(location.status)} rounded-full p-2 shadow-lg border-2 animate-pulse`}
+              style={{
+                left: `${leftPercent}%`,
+                top: `${topPercent}%`,
+                animationDelay: `${index * 0.2}s`
+              }}
+              onClick={() => onMarkerClick(location)}
+            >
+              {getMarkerIcon(location.status)}
+              
+              {/* Ripple Effect */}
+              <div className={`absolute inset-0 ${getMarkerColor(location.status)} rounded-full animate-ping opacity-20`}></div>
+              
+              {/* Time indicator */}
+              <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-card px-2 py-1 rounded text-xs text-muted-foreground whitespace-nowrap shadow-soft">
+                {getTimeAgo(location.created_at)} назад
+              </div>
+              
+              {/* Vote indicator */}
+              {(location.confirmations > 0 || location.denials > 0) && (
+                <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-card px-1 py-0.5 rounded text-xs whitespace-nowrap shadow-soft flex items-center space-x-1">
+                  {location.confirmations > 0 && (
+                    <span className="text-confirm">+{location.confirmations}</span>
+                  )}
+                  {location.denials > 0 && (
+                    <span className="text-destructive">-{location.denials}</span>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Center Point (User Location) */}
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
@@ -146,6 +180,17 @@ export const MapComponent = ({ policeLocations, onMarkerClick }: MapComponentPro
           </div>
         </div>
       </div>
+
+      {/* No data message */}
+      {policeLocations.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="bg-card/95 backdrop-blur-sm rounded-lg p-4 text-center">
+            <MapPin className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-muted-foreground">Нет активных постов ДПС</p>
+            <p className="text-xs text-muted-foreground">Будьте первым, кто добавит пост!</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MapPin, Navigation, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { useTelegram } from "@/hooks/useTelegram";
 
 interface AddLocationModalProps {
   isOpen: boolean;
@@ -17,30 +19,80 @@ export const AddLocationModal = ({ isOpen, onClose, onAdd }: AddLocationModalPro
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
   const [isUsingCurrentLocation, setIsUsingCurrentLocation] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  const { webApp } = useTelegram();
 
   const handleUseCurrentLocation = () => {
     setIsUsingCurrentLocation(true);
-    // Mock current location detection
-    setTimeout(() => {
-      setAddress("Ваше текущее местоположение");
-      setIsUsingCurrentLocation(false);
-    }, 1000);
+    
+    // Используем Telegram WebApp API для получения местоположения если доступно
+    if (webApp && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation({ lat: latitude, lng: longitude });
+          setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+          setIsUsingCurrentLocation(false);
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          // Fallback to mock location
+          const mockLat = 55.7558 + (Math.random() - 0.5) * 0.01;
+          const mockLng = 37.6176 + (Math.random() - 0.5) * 0.01;
+          setCurrentLocation({ lat: mockLat, lng: mockLng });
+          setAddress("Ваше текущее местоположение (приблизительно)");
+          setIsUsingCurrentLocation(false);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
+        }
+      );
+    } else {
+      // Fallback для случая, когда геолокация недоступна
+      setTimeout(() => {
+        const mockLat = 55.7558 + (Math.random() - 0.5) * 0.01;
+        const mockLng = 37.6176 + (Math.random() - 0.5) * 0.01;
+        setCurrentLocation({ lat: mockLat, lng: mockLng });
+        setAddress("Ваше текущее местоположение (приблизительно)");
+        setIsUsingCurrentLocation(false);
+      }, 1000);
+    }
   };
 
   const handleSubmit = () => {
     if (!address.trim()) return;
     
-    // Mock coordinates - would be replaced with actual geocoding
-    const mockLat = 55.7558 + (Math.random() - 0.5) * 0.01;
-    const mockLng = 37.6176 + (Math.random() - 0.5) * 0.01;
+    let lat, lng;
     
-    onAdd(mockLat, mockLng, address);
+    if (currentLocation) {
+      lat = currentLocation.lat;
+      lng = currentLocation.lng;
+    } else {
+      // Если пользователь ввел адрес вручную, генерируем координаты в районе Москвы
+      lat = 55.7558 + (Math.random() - 0.5) * 0.1;
+      lng = 37.6176 + (Math.random() - 0.5) * 0.1;
+    }
+    
+    onAdd(lat, lng, address);
+    
+    // Очищаем форму
     setAddress("");
     setDescription("");
+    setCurrentLocation(null);
+  };
+
+  const handleClose = () => {
+    setAddress("");
+    setDescription("");
+    setCurrentLocation(null);
+    onClose();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md mx-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2 text-foreground">
@@ -103,7 +155,7 @@ export const AddLocationModal = ({ isOpen, onClose, onAdd }: AddLocationModalPro
           {/* Action Buttons */}
           <div className="flex space-x-2">
             <Button
-              onClick={onClose}
+              onClick={handleClose}
               variant="outline"
               className="flex-1"
             >

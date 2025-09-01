@@ -1,25 +1,32 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Plus, User, Shield, CheckCircle, XCircle, Clock } from "lucide-react";
+import { MapPin, Plus, User, Shield, CheckCircle, XCircle } from "lucide-react";
 import { MapComponent } from "@/components/MapComponent";
 import { AddLocationModal } from "@/components/AddLocationModal";
 import { UserProfile } from "@/components/UserProfile";
 import { PoliceMarkerCard } from "@/components/PoliceMarkerCard";
 import { useTelegramAuth } from "@/hooks/useTelegramAuth";
 import { useTelegram } from "@/hooks/useTelegram";
+import { usePoliceLocations } from "@/hooks/usePoliceLocations";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface PoliceLocation {
   id: string;
-  lat: number;
-  lng: number;
+  latitude: number;
+  longitude: number;
   address: string;
-  reportedBy: string;
-  reportedAt: Date;
+  user_id: string;
+  created_at: string;
+  status: 'active' | 'confirmed' | 'disputed';
+  profiles?: {
+    username: string;
+  };
   confirmations: number;
   denials: number;
-  status: 'active' | 'confirmed' | 'disputed';
 }
 
 const Index = () => {
@@ -28,54 +35,132 @@ const Index = () => {
   const [selectedMarker, setSelectedMarker] = useState<PoliceLocation | null>(null);
   
   const { isAuthenticated, isLoading, telegramUser } = useTelegramAuth();
-  const { showMainButton, hideMainButton } = useTelegram();
+  const { showMainButton, hideMainButton, sendData } = useTelegram();
+  const { data: policeLocations = [], refetch } = usePoliceLocations();
+  const { toast } = useToast();
 
-  // Mock data - will be replaced with Supabase data
-  const [policeLocations] = useState<PoliceLocation[]>([
-    {
-      id: '1',
-      lat: 55.7558,
-      lng: 37.6176,
-      address: 'Красная площадь, Москва',
-      reportedBy: 'Анонимный пользователь',
-      reportedAt: new Date(Date.now() - 1000 * 60 * 15), // 15 minutes ago
-      confirmations: 3,
-      denials: 0,
-      status: 'confirmed'
-    },
-    {
-      id: '2', 
-      lat: 55.7522,
-      lng: 37.6156,
-      address: 'ул. Тверская, 15',
-      reportedBy: 'Водитель123',
-      reportedAt: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-      confirmations: 1,
-      denials: 2,
-      status: 'disputed'
+  const handleAddLocation = async (lat: number, lng: number, address: string) => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Ошибка",
+        description: "Необходима авторизация для добавления локации",
+        variant: "destructive",
+      });
+      return;
     }
-  ]);
 
-  const handleAddLocation = (lat: number, lng: number, address: string) => {
-    console.log('Adding location:', { lat, lng, address });
-    // Will integrate with Supabase
-    setIsAddModalOpen(false);
+    try {
+      const { error } = await supabase
+        .from('police_locations')
+        .insert({
+          latitude: lat,
+          longitude: lng,
+          address: address,
+          status: 'active'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Успех!",
+        description: "Пост ДПС добавлен на карту",
+      });
+
+      // Отправляем данные в Telegram
+      sendData({
+        action: 'location_added',
+        location: { lat, lng, address }
+      });
+
+      refetch();
+      setIsAddModalOpen(false);
+    } catch (error) {
+      console.error('Error adding location:', error);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось добавить локацию",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleConfirmLocation = (id: string) => {
-    console.log('Confirming location:', id);
-    // Will integrate with Supabase
+  const handleVoteLocation = async (locationId: string, voteType: 'confirm' | 'deny') => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Ошибка",
+        description: "Необходима авторизация для голосования",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Проверяем, не голосовал ли уже пользователь
+      const { data: existingVote } = await supabase
+        .from('location_votes')
+        .select('id')
+        .eq('location_id', locationId)
+        .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+        .single();
+
+      if (existingVote) {
+        toast({
+          title: "Внимание",
+          description: "Вы уже голосовали за эту локацию",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Добавляем голос
+      const { error } = await supabase
+        .from('location_votes')
+        .insert({
+          location_id: locationId,
+          vote_type: voteType
+        });
+
+      if (error) throw error;
+
+      // Обновляем статус локации если нужно
+      const location = policeLocations.find(l => l.id === locationId);
+      if (location) {
+        const newConfirmations = voteType === 'confirm' ? location.confirmations + 1 : location.confirmations;
+        const newDenials = voteType === 'deny' ? location.denials + 1 : location.denials;
+        
+        let newStatus = location.status;
+        if (newConfirmations >= 3) {
+          newStatus = 'confirmed';
+        } else if (newDenials >= 3) {
+          newStatus = 'disputed';
+        }
+
+        await supabase
+          .from('police_locations')
+          .update({ status: newStatus })
+          .eq('id', locationId);
+      }
+
+      toast({
+        title: "Успех!",
+        description: voteType === 'confirm' ? "Локация подтверждена" : "Локация опровергнута",
+      });
+
+      refetch();
+    } catch (error) {
+      console.error('Error voting:', error);
+      toast({
+        title: "Ошибка",
+        description: "Не удалось проголосовать",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDenyLocation = (id: string) => {
-    console.log('Denying location:', id);
-    // Will integrate with Supabase
-  };
-
-  // Telegram Mini App адаптация
+  // Telegram Mini App интеграция
   useEffect(() => {
     if (selectedMarker) {
-      showMainButton('Закрыть', () => setSelectedMarker(null));
+      showMainButton('Закрыть детали', () => setSelectedMarker(null));
     } else {
       hideMainButton();
     }
@@ -91,6 +176,25 @@ const Index = () => {
       </div>
     );
   }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="h-screen bg-gradient-subtle flex items-center justify-center p-4">
+        <Card className="w-full max-w-md p-6 text-center">
+          <div className="mb-4">
+            <Shield className="h-12 w-12 text-primary mx-auto mb-2" />
+            <h1 className="text-xl font-bold">ДПС Радар</h1>
+            <p className="text-muted-foreground">Необходима авторизация через Telegram</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Подсчитываем статистику из реальных данных
+  const activeLocations = policeLocations.filter(l => l.status === 'active').length;
+  const confirmedLocations = policeLocations.filter(l => l.status === 'confirmed').length;
+  const disputedLocations = policeLocations.filter(l => l.status === 'disputed').length;
 
   return (
     <div className="h-screen bg-gradient-subtle flex flex-col">
@@ -141,17 +245,17 @@ const Index = () => {
             <div className="flex items-center space-x-1">
               <div className="w-3 h-3 bg-police rounded-full"></div>
               <span className="text-muted-foreground">Активных:</span>
-              <Badge variant="destructive">{policeLocations.filter(l => l.status === 'active').length}</Badge>
+              <Badge variant="destructive">{activeLocations}</Badge>
             </div>
             <div className="flex items-center space-x-1">
               <CheckCircle className="h-3 w-3 text-confirm" />
               <span className="text-muted-foreground">Подтверждено:</span>
-              <Badge className="bg-confirm text-confirm-foreground">{policeLocations.filter(l => l.status === 'confirmed').length}</Badge>
+              <Badge className="bg-confirm text-confirm-foreground">{confirmedLocations}</Badge>
             </div>
             <div className="flex items-center space-x-1">
               <XCircle className="h-3 w-3 text-warning" />
               <span className="text-muted-foreground">Спорных:</span>
-              <Badge className="bg-warning text-warning-foreground">{policeLocations.filter(l => l.status === 'disputed').length}</Badge>
+              <Badge className="bg-warning text-warning-foreground">{disputedLocations}</Badge>
             </div>
           </div>
         </Card>
@@ -161,9 +265,15 @@ const Index = () => {
       {selectedMarker && (
         <div className="absolute bottom-4 left-4 right-4">
           <PoliceMarkerCard
-            location={selectedMarker}
-            onConfirm={() => handleConfirmLocation(selectedMarker.id)}
-            onDeny={() => handleDenyLocation(selectedMarker.id)}
+            location={{
+              ...selectedMarker,
+              lat: selectedMarker.latitude,
+              lng: selectedMarker.longitude,
+              reportedBy: selectedMarker.profiles?.username || 'Анонимный пользователь',
+              reportedAt: new Date(selectedMarker.created_at)
+            }}
+            onConfirm={() => handleVoteLocation(selectedMarker.id, 'confirm')}
+            onDeny={() => handleVoteLocation(selectedMarker.id, 'deny')}
             onClose={() => setSelectedMarker(null)}
           />
         </div>
