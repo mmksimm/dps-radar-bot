@@ -22,8 +22,8 @@ export const useTelegramAuth = () => {
       
       // Создаем или получаем пользователя в Supabase
       // Используем Telegram ID как уникальный идентификатор
-      const email = `${telegramUser.id}@telegram.user`;
-      const password = `tg_${telegramUser.id}_${process.env.NODE_ENV}`;
+      const email = `tg${telegramUser.id}@telegram.local`;
+      const password = `tg_${telegramUser.id}_secure`;
       
       // Попытка входа
       let { data, error } = await supabase.auth.signInWithPassword({
