@@ -50,13 +50,17 @@ const Index = () => {
     }
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not found');
+
       const { error } = await supabase
         .from('police_locations')
         .insert({
           latitude: lat,
           longitude: lng,
           address: address,
-          status: 'active'
+          status: 'active',
+          user_id: user.id
         });
 
       if (error) throw error;
@@ -113,11 +117,15 @@ const Index = () => {
       }
 
       // Добавляем голос
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not found');
+
       const { error } = await supabase
         .from('location_votes')
         .insert({
           location_id: locationId,
-          vote_type: voteType
+          vote_type: voteType,
+          user_id: user.id
         });
 
       if (error) throw error;
